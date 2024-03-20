@@ -1,0 +1,6 @@
+"0","# Construct the credible intervals"
+"0","cred_int <- data.frame(t(sapply(1:4, function(i) {"
+"0","  make_CI(importance_sample[[paste0(""beta"", i)]], importance_sample$log_weights, prob = 0.9)"
+"0","})))"
+"0",""
+"0","knitr::kable(cred_int, format = ""html"", caption = ""90% Credible Intervals for Model Parameters"")"

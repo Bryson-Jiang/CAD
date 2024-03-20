@@ -1,0 +1,289 @@
+---
+title: 'StatComp Project 1:  3D printer materials estimation'
+author: "Boshu Jiang (s2196886)"
+output:
+  html_document:
+    number_sections: yes
+  pdf_document:
+    number_sections: yes
+header-includes:
+  - \newcommand{\bm}[1]{\boldsymbol{#1}}
+  - \newcommand{\mat}[1]{\begin{bmatrix}#1\end{bmatrix}}
+---
+
+```{r setup, include = FALSE}
+# Modify this setup code chunk to set options
+# or add extra packages etc if needed.
+# See the project instructions for more details
+# on what code to show, and where/how.
+
+# Load the data
+load("filament1.rda")
+
+# Discover the name of the variable
+ls(filament1)
+
+library(styler)
+library(ggplot2)
+library(dplyr)
+
+style_file("report.Rmd", style = tidyverse_style)
+
+# Set default code chunk options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE
+)
+
+suppressPackageStartupMessages(library(tidyverse))
+theme_set(theme_bw())
+
+# To give the same random number sequence every time the document is knit:ed,
+# making it easier to discuss the specific numbers in the text:
+set.seed(12345L)
+```
+
+```{r code=readLines("code.R"), eval=TRUE, echo=FALSE, results='hide'}
+# Do not change this code chunk
+# Load function definitions
+source("code.R")
+```
+
+```{r, eval=TRUE, echo=TRUE}
+# Discover the name of the variable
+ls(filament1)
+```
+
+We load the data and check our variables. There are 86 observations and 5 variables in the data frame filament1, which are "Actual_Weight" "CAD_Weight""Date""Index" and "Material". Now, we will explore the variability of the data for different "CAD_Weight" and "Material".
+
+```{r, eval=TRUE, echo=FALSE}
+# scatter plot is for observing the relationship between two continuous variables.
+ggplot(filament1, aes(x = CAD_Weight, y = Actual_Weight)) +
+  geom_point() +
+  facet_wrap(~Material) +
+  theme_minimal() +
+  labs(
+    title = "Faceted Scatter Plot of CAD Weight vs Actual Weight",
+    x = "CAD Weight (grams)",
+    y = "Actual Weight (grams)"
+  )
+```
+
+Firstly, I make a scatter plot between CAD Weight and Actual Weight among different materials since scatter plot is for observing the relationship between two continuous variables. However, since we are exploring the variability of the data for different "CAD_Weight" and "Material", we just need to focus on the horizontal distribution of spots. Therefore, I will make a box plot with "Material" as horizontal axes and "CAD_Weight" as vertical axes.
+
+```{r, eval=TRUE, echo=FALSE}
+# Box plots are great for visualizing the distribution of actual weight for each material
+ggplot(filament1, aes(x = Material, y = CAD_Weight, fill = Material)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(
+    title = "Box Plot of CAD Weight by Material",
+    x = "Material",
+    y = "CAD Weight (grams)"
+  )
+```
+
+The provided box plot above displays the distribution of CAD weights for objects printed with different materials, with each box representing the interquartile range of weights for a specific material. It is obvious that the range of CAD weights varies significantly between materials. material with red color has a largest range on CAD weight and material neon pink has the smallest range on CAD weight. It is interesting that material with magenta color distributes mostly at from 40 to 45 but has some obvious outliers.
+
+# Classical estimation
+
+In this part, we are going to make an classical estimation for two models, which capture the relationship between CAD_Weight and Actual_Weight. Here is the two models
+
+Model A: $$y_i \sim \text{Normal}(\beta_1 + \beta_2 x_{i}, \exp(\beta_3 + \beta_4 x_{i})) $$
+
+Model B: $$ y_i \sim \text{Normal}(\beta_1 + \beta_2 x_{i}, \exp(\beta_3) + \exp(\beta_4) x_{i}^2) $$
+
+We are going to use the following formula to find the negated log-likelihood function, then we estimate the parameters of two specified models ("A" or "B") by minimizing the negative log-likelihood of the data given the model.
+
+$$l(\beta)_{\text{negative}} = -\log\left(\prod_{i=1}^{N} f(X_i; \beta)\right) = -\sum_{i=1}^{N} \log(f(X_i; \beta))$$
+
+After getting the parameters by optimization, we will calculates the variance for parameters by linear solving the negated hessian matrix, which is positively definite. Finally, we compute standard error from variance and find the z-value for the confidence interval (90% in this case). The output of the classical estimation of each parameter is displayed below, and there is a 90% confidence interval and standard error for each parameter.
+
+```{r, eval=TRUE, echo=FALSE}
+fit_A <- filament1_estimate(filament1, "A")
+fit_B <- filament1_estimate(filament1, "B")
+
+# Compute confidence intervals for both models
+ci_A <- compute_CI(fit_A)
+ci_B <- compute_CI(fit_B)
+
+# Print the results as a table using knitr::kable()
+knitr::kable(ci_A, caption = "90% Confidence Intervals for Model A")
+knitr::kable(ci_B, caption = "90% Confidence Intervals for Model B")
+```
+
+From the table above, we can write our estimation for two models A and B.
+
+Model A:
+
+$$y_i \sim \text{Normal}(-0.0893 + 1.0792 x_{i}, \exp(-1.9038 + 0.0557 x_{i}))$$
+
+Model B:
+
+$$ y_i \sim \text{Normal}(-0.1613 + 1.0829 x_{i}, \exp(-13.5015) + \exp(-6.6136) x_{i}^2) $$
+
+Let me explain these four parameters in order:
+
+$\beta_1$ is the intercept or the starting point of the actual weight. There's some difference of $\beta_1$ for model A and model B, and $\beta_1$ of model B has smaller confidence interval because of the lower standard error.
+
+$\beta_2$ is the parameter that shows the linear relationship between independent variable and response variable. For example, If we apply model A, a 1 gram increasing of CAD weight indicates that there will be a 1.0792 grams increasing of actual weight.
+
+$\beta_3$ and $\beta_4$ are parameters that indicate the variance of the model. However, notice that the 90% confidence interval for $\beta_3$ in model B is extremely large. It may indicate that the model does not fit the data well. A model that does not capture the underlying structure of the data can lead to imprecise estimates of its parameters. In general, model A is simpler and gives outputs with fairly precise estimates, but it does not have motivation in physics. Model B is more complex and take the physical assumption that the error in the CAD software calculation of the weight is proportional to the weight itself. However, a paramater model B shows apparent uncertainty and large confidence interval.
+
+# Bayesian estimation
+
+In this part, we are going to make a Bayesian approach for the bayesian model which describes the actual weight $y_i$ based on the CAD weight $x_i$ for observation i:
+
+$y_i \sim \text{Normal}(\beta_1 + \beta_2 x_i + \beta_3 + \beta_4 x_i^2)$
+
+To ensure positivity of the variance, the parameterisation $[\theta_1, \theta_2,\theta_3,\theta_4]$ = $[\beta_1, \beta_2, \log(\beta_3), \log(\beta_4)]$ is introduced, and the printer operator assigns independent prior distributions as follows:
+
+$\theta_1 \sim {Normal}(0, \gamma_1)$
+
+$\theta_2 \sim {Normal}(0, \gamma_2)$
+
+$\theta_3 \sim {LogExp}(\gamma_3)$
+
+$\theta_4 \sim {LogExp}(\gamma_4)$
+
+where ${LogExp}(a)$ denotes the logarithm of an exponentially distributed random variable with rate parameter $a$. The $\gamma=(\gamma_1,\gamma_2,\gamma_3,\gamma_3)$ values are positive parameters.
+
+Since the Bayesian approach considers $\theta$ to be a random variable, we need to define the prior distribution $p(\theta)$. Note that the observation vector $y$ does not intervene in $p(\theta)$. The prior distribution contains all available prior information about $\theta$ before observing any data. According to the Bayes’ theorem to obtain posterior distribution $p(\theta|y)$, which contains all available knowledge (prior information and data) about the quantity of interest $\theta$. The posterior distribution is computed as:
+
+$p(\theta|y)=\frac{p(y|\theta)p(\theta)}{p(y)}$
+
+In the Bayesian approach in our project, we compute the logarithm for both sides. In optimization problems, log transformations can turn multiplicative relationships into additive ones, which are often easier to handle. Another reason is that addition is computationally cheaper than multiplication. This can lead to more efficient algorithms and less error, especially in the context of optimization, where we often seek to maximize the likelihood or the posterior. This is the formula for posterior distribution after taking logarithm:
+
+$\log(P(\theta|y)) \propto \log(P(y|\theta)) + \log(P(\theta))$
+
+I define log_prior_density, log_like and log_posterior functions to compute the prior, observation and posterior distribution, using some pre-defined functions in code appendix. Then, we use posterior_mode function to evaluate the inverse of the negated Hessian at the mode, in order to obtain a multivariate Normal approximation ${Normal}(\mu,S)$ to the posterior distribution for $\theta$. Notice that we assume value for $\gamma_i$ is $(1,1,1,1)$, and the start value for $\theta_i$ is $(0,0,0,0)$. Here is the output:
+
+```{r, eval=TRUE, echo=TRUE}
+params <- rep(1, 4)
+
+# Initial theta values
+theta_start <- rep(0, 4)
+
+# the data points
+y <- filament1$Actual_Weight
+x <- filament1$CAD_Weight
+
+# Apply the posterior_mode function to find the mode and covariance matrix
+post_mode_result <- posterior_mode(theta_start, x, y, params)
+
+mu <- post_mode_result$mode
+S <- solve(post_mode_result$hessian)
+
+post_mode_result_df <- data.frame(
+  Mode = post_mode_result$mode,
+  Hessian_Diagonal = diag(post_mode_result$hessian),
+  S_Diagonal = diag(post_mode_result$S)
+)
+
+knitr::kable(post_mode_result_df, caption = "Posterior Mode Results")
+```
+
+The table above present the results of our Bayesian estimation. The estimation is computed by find the local maximum of the log-posterior. From the table, the estimation for $\beta_1$ is -0.1008, $\beta_2$ is 1.08, $\beta_3$ is -2.9835 and $\beta_4$ is -6.7584
+
+```{r}
+N <- 10000
+importance_sample <- do_importance(N, mu, S, x = x, y = y, params = params)
+
+sum(exp(importance_sample$log_weights))
+```
+
+Since the do_importance functionoutput a data. frame with five columns, $\beta_1$, $\beta_2$, $\beta_3$, $\beta_4$, log_weights, containing the $\beta_i$ samples and normalised log importance weights, the sum of exp(log_weights) shoule be 1. we check our importance sample above.
+
+```{r, echo=FALSE}
+samples_df <- as.data.frame(importance_sample)
+samples_long <- samples_df %>%
+  pivot_longer(
+    cols = starts_with("beta"),
+    names_to = "parameter",
+    values_to = "value"
+  ) %>%
+  group_by(parameter) %>%
+  arrange(value) %>%
+  mutate(
+    count = n(),
+    rank = row_number(),
+    unweighted_cdf = (rank - 1) / count,
+    weighted_cdf = cumsum(log_weights) / sum(log_weights)
+  ) %>%
+  ungroup()
+
+# Plot both CDFs
+ggplot(samples_long) +
+  geom_step(aes(x = value, y = unweighted_cdf, color = "red"), linetype = "dashed") +
+  geom_step(aes(x = value, y = weighted_cdf, color = "blue")) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(
+    title = "Weighted and Unweighted CDFs for Each Parameter",
+    x = "Parameter Value",
+    y = "CDF"
+  ) +
+  theme_minimal() +
+  scale_linetype_manual(values = c("dashed", "solid"))
+```
+
+In the plot above, the red line is the unweighted CDF one and the blue line is weighted CDF. We find that the weighted and unweighted cumulative distribution functions (CDFs) are almost identical, this suggests that the weights in your importance sampling are relatively uniform, meaning that the importance distribution closely matches our target posterior distribution. Therefore, our importance distribution is very efficient. The variance of the importance weights is low, suggesting a good match between the importance and the posterior distribution. Now, we will compute the credible interval for beta parameters.
+
+```{r}
+# Construct the credible intervals
+cred_int <- data.frame(t(sapply(1:4, function(i) {
+  make_CI(importance_sample[[paste0("beta", i)]], importance_sample$log_weights, prob = 0.9)
+})))
+
+knitr::kable(cred_int, format = "html", caption = "90% Credible Intervals for Model Parameters")
+```
+
+This is the 90% credible interval of parameters for our Bayesian model based on the importance sample. In addition to wquantile and pivot_longer, the methods group_by and summarise are helpful. You may wish to define a function make_CI taking arguments x, weights, and prob (to control the intended coverage probability). All the confidence intervals for the four model parameters are acceptable compared with that of model B of classical estimation. There is not any confidence intervals with extremely large range which shows uncertainty of the model.
+
+```{r, echo=FALSE, warning=FALSE}
+# creates a sequence of x values for prediction
+pred <- samples_df %>%
+  full_join(data.frame(x = seq(0, 100, by = 1)), by = character()) %>%
+  mutate(
+    mu = beta1 + beta2 * x,
+    sigma = sqrt(beta3 + beta4 * x^2),
+    weight = exp(log_weights)
+  ) %>%
+  group_by(x) %>%
+  summarise(
+    mu_pred = sum(weight * mu),
+    sigma_pred = sqrt(sum(weight * (sigma^2 + (mu - mu_pred)^2))),
+    .groups = "drop"
+  )
+
+# Plotting the prediction intervals
+ggplot() +
+  geom_point(data = filament1, aes(x = CAD_Weight, y = Actual_Weight)) +
+  geom_line(data = pred, aes(x = x, y = mu_pred)) +
+  geom_ribbon(data = pred, aes(x = x, ymin = mu_pred - 2 * sigma_pred, ymax = mu_pred + 2 * sigma_pred), alpha = 0.2, inherit.aes = FALSE) +
+  labs(x = "CAD weight", y = "Actual weight", title = "Scatter plot with regression line and prediction intervals") +
+  theme_minimal()
+```
+
+A prediction interval is an estimate of an interval within which future observations will fall, with a certain probability. It is calculated from the sampled beta values, which represent the parameters of the model. The sampled beta values are used to generate predicted values, and the variability in these predictions forms the basis of the prediction interval. The prediction interval includes not only the uncertainty of the parameter estimates but also the inherent randomness in the data.
+
+From the plot, we can find that the range of prediction interval increases as CAD_Weight increasing. The reason is that when predictions are made for values outside the range of the data on which the model was trained (extrapolation), there will be less certainty about the accuracy of these predictions. This lack of certainty is reflected in wider prediction intervals.
+
+```{r,echo=FALSE}
+ggplot(samples_long, aes(x = value, y = log_weights)) +
+  geom_point(alpha = 0.6) + # Use alpha to control point transparency
+  facet_wrap(~parameter) + # If you have multiple parameters, create a plot for each
+  labs(
+    title = "Importance Log-Weights by Sampled Beta Values",
+    x = "Sampled Beta Value",
+    y = "Importance Log-Weight"
+  ) +
+  theme_minimal()
+```
+
+The plots suggests our estimation and confidence interval. In Bayesian statistics, importance sampling is used to approximate posterior distributions or expectation. The importance weights are calculated based on how the sampled beta values relate to the posterior distribution. These weights are then used to adjust the estimates to more accurately reflect the target distribution. Therefore, the sampled beta values directly affect the importance weights, and consequently, any estimates or intervals calculated from the importance sampling process.
+
+# Code appendix
+
+```{r code=readLines("code.R"), eval=FALSE, echo=TRUE}
+# Do not change this code chunk
+```
